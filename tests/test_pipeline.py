@@ -1,12 +1,22 @@
 """Stage tests from SPEC.md Section 7. Run with: pytest"""
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import pytest
 
+from src.distances import cna_distance, combine, has_signal, normalize, snv_distance
 from src.evaluate import normalized_rf
 from src.reconstruct import nj_dendropy, nj_from_matrix, nj_newick
-from src.simulate_cna import simulate_cnas
-from src.simulate_snv import leaf_rows, simulate_snvs
+from src.run_sweep import calibration_table, load_config, run_grid
+from src.simulate_cna import add_cna_noise, simulate_cnas
+from src.simulate_snv import add_snv_noise, drop_empty_sites, leaf_rows, simulate_snvs
 from src.simulate_tree import make_namespace, path_length_matrix, simulate_tree
+
+ROOT = Path(__file__).resolve().parents[1]
+SWEEP = ROOT / "src" / "run_sweep.py"
 
 N = 40
 CNA = dict(n_bins=5000, seg_min=5, seg_max=60, cn_max=8)
@@ -135,3 +145,93 @@ def test_cna_rows_follow_namespace():
     C, profiles = simulate_cnas(tree, mu_cna=8.0, rng=rng(26), **CNA)
     for leaf, i in leaf_rows(tree).items():
         assert np.array_equal(C[i], profiles[leaf])
+
+
+# ---------------------------------------------------------------- Stage 4
+def test_zero_noise_is_identity():
+    M, _ = simulate_snvs(simulate_tree(N, rng(31)), 3.0, rng(32))
+    assert np.array_equal(add_snv_noise(M, 0.0, 0.0, rng(33)), M)
+    C, _ = simulate_cnas(simulate_tree(N, rng(34)), mu_cna=8.0, rng=rng(35), **CNA)
+    assert np.array_equal(add_cna_noise(C, 0.0, rng(36)), C.astype(float))
+
+
+def test_full_dropout_removes_every_one():
+    M, _ = simulate_snvs(simulate_tree(N, rng(37)), 3.0, rng(38))
+    noisy = add_snv_noise(M, 1.0, 0.0, rng(39))
+    assert noisy.sum() == 0
+    assert drop_empty_sites(noisy).shape == (N, 0)
+
+
+def test_full_dropout_triggers_skip_rule_not_nan():
+    cfg = load_config()
+    df, skipped = run_grid(cfg, replicates=[0], alphas=[1.0], sigmas=[0.0], beta=0.0)
+    assert (df["n_snv_sites"] == 0).all()
+    assert df.loc[df["w"] > 0, "nrf"].isna().all()  # every weight that needs SNVs is skipped
+    cna_only = df.loc[df["w"] == 0, "nrf"]
+    assert cna_only.notna().all() and (cna_only < 1).all()  # CNA-only is not poisoned
+    assert len(skipped) == len(cfg["weights"]) - 1
+    assert len(df) == len(cfg["weights"])  # skipped rows stay in the table
+
+
+def test_empirical_noise_rates():
+    r = rng(40)
+    M = (r.random((2000, 500)) < 0.4).astype(np.uint8)
+    alpha, beta = 0.3, 0.1
+    noisy = add_snv_noise(M, alpha, beta, rng(41))
+    assert abs((noisy[M == 1] == 0).mean() - alpha) < 0.02
+    assert abs((noisy[M == 0] == 1).mean() - beta) < 0.02
+    C = np.full((200, 5000), 2, dtype=np.int16)
+    assert abs((add_cna_noise(C, 0.6, rng(42)) - C).std() - 0.6) < 0.02
+
+
+# ---------------------------------------------------------------- Stage 5
+def test_distances_and_normalize():
+    M = np.array([[1, 1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 1]], dtype=np.uint8)
+    assert np.allclose(snv_distance(M), np.array([[0, 1, 4], [1, 0, 3], [4, 3, 0]]) / 4)
+    C = np.array([[2, 2, 2], [3, 2, 1], [2, 2, 0]])
+    assert np.allclose(cna_distance(C), np.array([[0, 2, 2], [2, 0, 2], [2, 2, 0]]) / 3)
+    D = normalize(snv_distance(M))
+    assert np.isclose(D[~np.eye(3, dtype=bool)].mean(), 1.0)
+    assert not has_signal(snv_distance(np.zeros((3, 0), dtype=np.uint8)))
+    with pytest.raises(ValueError):
+        normalize(np.zeros((3, 3)))
+    assert np.array_equal(combine(D, None, 1.0), D) and np.array_equal(combine(None, D, 0.0), D)
+
+
+def test_calibration_passes_at_zero_noise():
+    cfg = load_config()
+    tab = calibration_table(cfg)
+    bar = cfg["calibration"]["max_mean_nrf"]
+    assert tab.loc[1.0, "mean"] <= bar, "SNV-only fails calibration"
+    assert tab.loc[0.0, "mean"] <= bar, "CNA-only fails calibration"
+
+
+def test_random_distances_give_nrf_near_one():
+    tns = make_namespace(N)
+    true = simulate_tree(N, rng(50), taxon_namespace=tns)
+    vals = []
+    for k in range(30):
+        A = rng(500 + k).random((N, N))
+        D = A + A.T
+        np.fill_diagonal(D, 0.0)
+        vals.append(normalized_rf(true, nj_from_matrix(D, tns), N))
+    assert np.mean(vals) >= 0.95
+
+
+def _probe(tmp_path, k, dummy, nj):
+    out = tmp_path / f"probe_{nj}_{k}.csv"
+    subprocess.run([sys.executable, str(SWEEP), "--probe", str(out), "--dummy", str(dummy),
+                    "--nj", nj], check=True, cwd=str(tmp_path))
+    return out.read_bytes()
+
+
+def test_rows_identical_across_processes(tmp_path):
+    runs = [_probe(tmp_path, k, dummy, "numpy") for k, dummy in enumerate([0, 13_337, 271_828])]
+    assert runs[0] == runs[1] == runs[2]
+
+
+def test_harness_detects_dendropy_nondeterminism(tmp_path):
+    # Positive control: the same harness must be able to see DendroPy's tie-order drift.
+    dummies = [0, 13_337, 271_828, 99_991, 500_009, 7, 1_000_003, 31_415]
+    runs = [_probe(tmp_path, k, d, "dendropy") for k, d in enumerate(dummies)]
+    assert len(set(runs)) > 1, "DendroPy route looked deterministic; the harness proves nothing"
