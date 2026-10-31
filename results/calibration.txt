@@ -1,4 +1,4 @@
-Calibration at zero noise (alpha = beta = sigma = 0), 20 replicates, 2026-10-31 01:23 UTC
+Calibration at zero noise (alpha = beta = sigma = 0), 20 replicates, 2026-10-31 02:14 UTC
 mu_snv=3.0 n_bins=5000 mu_cna=8.0 seg=[5,60]
        mean     se    min    max   n
 w                                   
@@ -9,4 +9,4 @@ w
 1.00 0.1757 0.0093 0.1081 0.2432  20
 SNV-only: mean 0.1757 -> PASS (bar 0.2)
 CNA-only: mean 0.1608 -> PASS (bar 0.2)
-runtime 2.0 s
+runtime 2.1 s

@@ -49,39 +49,39 @@ The better single source is also chosen on the selection replicates.
 
 | α | σ | best w | its nRF (report reps) | single source | its nRF | best w − single | verdict |
 |---|---|---|---|---|---|---|---|
-| 0 | 0 | 0.5 | 0.114 ± 0.011 | CNA-only | 0.165 | -0.051 ± 0.015 | combined better |
-| 0 | 0.2 | 0.5 | 0.114 ± 0.013 | CNA-only | 0.157 | -0.043 ± 0.017 | combined better |
-| 0 | 0.4 | 0.25 | 0.108 ± 0.013 | CNA-only | 0.159 | -0.051 ± 0.016 | combined better |
-| 0 | 0.6 | 0.25 | 0.114 ± 0.015 | CNA-only | 0.176 | -0.062 ± 0.012 | combined better |
-| 0 | 0.8 | 0.25 | 0.135 ± 0.016 | SNV-only | 0.173 | -0.038 ± 0.017 | combined better |
-| 0 | 1 | 0.25 | 0.141 ± 0.018 | SNV-only | 0.173 | -0.032 ± 0.017 | no clear difference |
-| 0.1 | 0 | 0.25 | 0.151 ± 0.012 | CNA-only | 0.165 | -0.014 ± 0.012 | no clear difference |
-| 0.1 | 0.2 | 0.25 | 0.146 ± 0.008 | CNA-only | 0.157 | -0.011 ± 0.013 | no clear difference |
-| 0.1 | 0.4 | 0.25 | 0.146 ± 0.016 | CNA-only | 0.159 | -0.014 ± 0.021 | no clear difference |
-| 0.1 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 | +0.000 ± 0.000 | no clear difference |
-| 0.1 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 | +0.000 ± 0.000 | no clear difference |
-| 0.1 | 1 | 0.25 | 0.203 ± 0.027 | CNA-only | 0.262 | -0.059 ± 0.035 | no clear difference |
-| 0.2 | 0 | 0.25 | 0.170 ± 0.011 | CNA-only | 0.165 | +0.005 ± 0.011 | no clear difference |
-| 0.2 | 0.2 | 0.25 | 0.176 ± 0.018 | CNA-only | 0.157 | +0.019 ± 0.021 | no clear difference |
-| 0.2 | 0.4 | 0.25 | 0.195 ± 0.018 | CNA-only | 0.159 | +0.035 ± 0.015 | combined worse |
-| 0.2 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 | +0.000 ± 0.000 | no clear difference |
-| 0.2 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 | +0.000 ± 0.000 | no clear difference |
-| 0.2 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 | +0.000 ± 0.000 | no clear difference |
-| 0.3 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 | +0.000 ± 0.000 | no clear difference |
-| 0.4 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 | +0.000 ± 0.000 | no clear difference |
-| 0.5 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 | +0.000 ± 0.000 | no clear difference |
+| 0 | 0 | 0.5 | 0.114 ± 0.011 | CNA-only | 0.165 ± 0.012 | -0.051 ± 0.015 | combined better |
+| 0 | 0.2 | 0.5 | 0.114 ± 0.013 | CNA-only | 0.157 ± 0.015 | -0.043 ± 0.017 | combined better |
+| 0 | 0.4 | 0.25 | 0.108 ± 0.013 | CNA-only | 0.159 ± 0.015 | -0.051 ± 0.016 | combined better |
+| 0 | 0.6 | 0.25 | 0.114 ± 0.015 | CNA-only | 0.176 ± 0.018 | -0.062 ± 0.012 | combined better |
+| 0 | 0.8 | 0.25 | 0.135 ± 0.016 | SNV-only | 0.173 ± 0.013 | -0.038 ± 0.017 | combined better |
+| 0 | 1 | 0.25 | 0.141 ± 0.018 | SNV-only | 0.173 ± 0.013 | -0.032 ± 0.017 | no clear difference |
+| 0.1 | 0 | 0.25 | 0.151 ± 0.012 | CNA-only | 0.165 ± 0.012 | -0.014 ± 0.012 | no clear difference |
+| 0.1 | 0.2 | 0.25 | 0.146 ± 0.008 | CNA-only | 0.157 ± 0.015 | -0.011 ± 0.013 | no clear difference |
+| 0.1 | 0.4 | 0.25 | 0.146 ± 0.016 | CNA-only | 0.159 ± 0.015 | -0.014 ± 0.021 | no clear difference |
+| 0.1 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 ± 0.018 | +0.000 ± 0.000 | no clear difference |
+| 0.1 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 ± 0.028 | +0.000 ± 0.000 | no clear difference |
+| 0.1 | 1 | 0.25 | 0.203 ± 0.027 | CNA-only | 0.262 ± 0.020 | -0.059 ± 0.035 | no clear difference |
+| 0.2 | 0 | 0.25 | 0.170 ± 0.011 | CNA-only | 0.165 ± 0.012 | +0.005 ± 0.011 | no clear difference |
+| 0.2 | 0.2 | 0.25 | 0.176 ± 0.018 | CNA-only | 0.157 ± 0.015 | +0.019 ± 0.021 | no clear difference |
+| 0.2 | 0.4 | 0.25 | 0.195 ± 0.018 | CNA-only | 0.159 ± 0.015 | +0.035 ± 0.015 | combined worse |
+| 0.2 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 ± 0.018 | +0.000 ± 0.000 | no clear difference |
+| 0.2 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 ± 0.028 | +0.000 ± 0.000 | no clear difference |
+| 0.2 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 ± 0.020 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 ± 0.012 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 ± 0.018 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 ± 0.028 | +0.000 ± 0.000 | no clear difference |
+| 0.3 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 ± 0.020 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 ± 0.012 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 ± 0.018 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 ± 0.028 | +0.000 ± 0.000 | no clear difference |
+| 0.4 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 ± 0.020 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 0 | 0 | 0.165 ± 0.012 | CNA-only | 0.165 ± 0.012 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 0.2 | 0 | 0.157 ± 0.015 | CNA-only | 0.157 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 0.4 | 0 | 0.159 ± 0.015 | CNA-only | 0.159 ± 0.015 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 0.6 | 0 | 0.176 ± 0.018 | CNA-only | 0.176 ± 0.018 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 0.8 | 0 | 0.208 ± 0.028 | CNA-only | 0.208 ± 0.028 | +0.000 ± 0.000 | no clear difference |
+| 0.5 | 1 | 0 | 0.262 ± 0.020 | CNA-only | 0.262 ± 0.020 | +0.000 ± 0.000 | no clear difference |

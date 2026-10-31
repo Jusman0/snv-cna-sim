@@ -12,10 +12,12 @@ The motivation is an NSF-funded UConn project (IIS-2212511; PI Ion Măndoiu, co-
 
 ![Harm from combining](results/figures/harm_map.png)
 
-Red cells are settings where averaging SNV and CNA distances (w = 0.5) gave a *worse* tree than the better single source; blue cells are settings where it gave a better one. Numbers are paired mean differences in normalized Robinson–Foulds distance ± 1 SE, over 20 replicates per cell.
+Each cell compares averaging the SNV and CNA distances (w = 0.5) with the better single source. The number is the paired mean difference in normalized Robinson–Foulds distance ± 1 SE, over 20 replicates. Red means the average gave a *worse* tree, blue a better one. Bold marks a clear difference (≥ 2 paired SE); pale cells without bold are not clear.
 
-- **Combining helps only when SNVs have no dropout** (α = 0, bottom row).
-- **From α = 0.2 up, combining is worse than copy number alone** in 23 of 24 settings.
+- **Combining helped only when SNVs had no dropout** (α = 0, bottom row).
+- **From α = 0.2 up, combining was worse than copy number alone** in 23 of 24 settings. Even with no CNA jitter (left column), it was worse for α ≥ 0.3.
+- **Part of the rise with σ comes from the normalization step.** Jitter inflates every CNA distance. NJ ignores that offset, but dividing by the mean distance does not. So CNA's effective share of the "50/50" mix falls to 0.27 at σ = 0.4 and 0.11 at σ = 1.0 ([results/normalization_check.txt](results/normalization_check.txt), a post-hoc diagnostic). This is a property of the naive method: averaging normalized distances can silently tilt the mix toward the noisier source.
+- **The 24 settings reuse the same 20 trees**, so they are not independent tests.
 
 Read the [summary](results/SUMMARY.md), the [full tables](results/tables.md) and the [essay sentence](results/ESSAY_SENTENCE.md). The other figures are the [win map](results/figures/win_map.png) and [nRF vs dropout at σ = 0.4](results/figures/line_sigma0.4.png).
 
@@ -31,9 +33,12 @@ Read the [summary](results/SUMMARY.md), the [full tables](results/tables.md) and
 ## How it was kept honest
 
 - **Paired design.** Within a replicate, every weight is scored on the same tree and the same noise draw. The 36 (α, σ) cells also share the same 20 trees and clean data (common random numbers), so cells are not independent samples.
-- **Calibration before the sweep.** At zero noise, both sources must reach a mean nRF ≤ 0.2 ([results/calibration.txt](results/calibration.txt)): SNV-only scored 0.176 ± 0.009 and CNA-only 0.161 ± 0.011. The spec's original CNA defaults (500 bins, μ_CNA = 1) could not pass (0.553), so the defaults became 5000 bins and μ_CNA = 8. That choice was made from zero-noise runs only.
+- **Calibration before the sweep.** At zero noise, both sources must reach a mean nRF ≤ 0.2 ([results/calibration.txt](results/calibration.txt)): SNV-only scored 0.176 ± 0.009 and CNA-only 0.161 ± 0.011. The spec's original CNA defaults (500 bins, μ_CNA = 1) could not pass: 0.553, in a pre-build throwaway check that used DendroPy's NJ (see SPEC.md §5). So the defaults became 5000 bins and μ_CNA = 8, a choice made from zero-noise runs only.
 - **Analysis fixed before the results.** The analysis and figure code was committed (`09c6b42`) before the sweep ran from that clean commit. [results/run_log.txt](results/run_log.txt) freezes the config, calibration and package versions.
-- **No tuning on reported data.** The tuned weight (finding 4) is chosen on replicates 0–9 and reported on 10–19.
+  - Since then, `src/` and `config.yaml` are unchanged.
+  - The only later analysis changes are reporting: an SE column in the holdout table, plus two post-hoc scripts (`spot_check.py`, `normalization_check.py`).
+  - Re-running calibration from the committed code reproduced identical numbers.
+- **No tuning on reported data.** The tuned weight (finding 5) is chosen on replicates 0–9 and reported on 10–19.
 - **Uncertainty.** All differences are means of paired per-replicate differences ± 1 SE. Anything under 2 SE is called "no clear difference."
 - **Spot-check.** Three random result rows were recomputed with loop-based distances and an independent split-set RF; all three match ([results/spot_check.txt](results/spot_check.txt)).
 
@@ -71,6 +76,10 @@ python analysis/plots.py
 python analysis/spot_check.py
 ```
 
+```bash
+python analysis/normalization_check.py
+```
+
 The full sweep (3,600 trees) takes under a minute on a desktop CPU. The test suite has 102 tests, including the determinism check and its positive control.
 
 ## Layout
@@ -81,10 +90,11 @@ config.yaml             every parameter
 src/                    simulate_tree, simulate_snv, simulate_cna, distances,
                         reconstruct (NumPy NJ), evaluate (nRF), run_sweep
 analysis/               stats.py (paired statistics), plots.py (figures + tables),
-                        spot_check.py
+                        spot_check.py, normalization_check.py (post-hoc)
 results/                results.csv, run_log.txt, calibration.txt, tables.md,
                         cell_summary.csv, holdout_best_w.csv, SUMMARY.md,
-                        ESSAY_SENTENCE.md, spot_check.txt, figures/
+                        ESSAY_SENTENCE.md, spot_check.txt,
+                        normalization_check.txt, figures/
 tests/test_pipeline.py  stage tests from SPEC.md Section 7
 ```
 
@@ -96,7 +106,14 @@ tests/test_pipeline.py  stage tests from SPEC.md Section 7
 - **Distance-based only.** Neighbor joining is one method. The Bansal lab's DICE is also distance-based but CNA-only, and uses balanced minimum evolution.
 - **Small scale.** 40 cells, versus hundreds to thousands in current single-cell DNA datasets.
 - **Calibration sets the balance.** With 5000 bins, CNA jitter up to σ = 0.6 barely moved CNA-only, while SNV dropout hurt SNV-only a lot. Different rates, bin counts or noise models could shift where combining helps.
-- **Selection in the harm map.** The "better single source" in each cell is picked from the same 20 replicates it is compared on. Finding 4's holdout avoids that selection and reaches the same conclusion.
+- **Mean-normalization re-weights under noise.** The nominal weight w is not the effective weight once jitter inflates CNA distances (see above). A scale estimate that ignores constant offsets would be a fairer mix. It was not tried, because changing the method after seeing results would be tuning on reported data.
+- **Selection in the harm map.** The "better single source" in each cell is picked from the same 20 replicates it is compared on. The headline comparisons don't depend on that choice:
+  - At α = 0, combining beat each source separately in all six σ cells, each by at least 3 paired SE.
+  - The 23-of-24 count compares with CNA-only, which was the better single source in every α ≥ 0.2 cell.
+
+## Credits
+
+Built with AI coding assistance (Claude Code). The commits carry co-author lines.
 
 ## Related work
 

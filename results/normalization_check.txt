@@ -1,0 +1,13 @@
+Post-hoc normalization diagnostic (20 replicates, sweep noise streams)
+inflation = mean CNA distance at sigma / at sigma 0; slope, intercept, r2 from
+regressing noisy on clean pairwise distances; cna_share_w05 = CNA's effective
+share of the w = 0.5 mix after normalization (0.5 = intended).
+
+       mean_inflation  slope  intercept  r2_min  cna_share_w05  cna_share_se
+sigma                                                                       
+0.0            1.0000 1.0000     0.0000  1.0000         0.5000        0.0000
+0.2            1.3753 0.8255     0.2167  0.9983         0.3753        0.0025
+0.4            1.7638 0.6611     0.4346  0.9902         0.2733        0.0035
+0.6            2.2016 0.5345     0.6572  0.9734         0.1962        0.0035
+0.8            2.6818 0.4425     0.8829  0.9455         0.1425        0.0031
+1.0            3.1891 0.3746     1.1098  0.9013         0.1059        0.0026

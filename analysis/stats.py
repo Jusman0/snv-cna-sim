@@ -75,6 +75,7 @@ def holdout_best_w(df, select, report):
         rows.append({"alpha": alpha, "sigma": sigma, "best_w": best_w,
                      "single_w": single, "report_mean_best_w": h[best_w].mean(),
                      "report_se_best_w": se(h[best_w]), "report_mean_single": h[single].mean(),
+                     "report_se_single": se(h[single]),
                      "report_diff": d, "report_diff_se": s, "verdict": verdict(d, s),
                      "n_report": len(h)})
     return pd.DataFrame(rows)

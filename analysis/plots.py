@@ -179,7 +179,7 @@ def tables_md(summary, holdout, cfg):
         single = "SNV-only" if r["single_w"] == SNV_ONLY else "CNA-only"
         out.append(f"| {r['alpha']:g} | {r['sigma']:g} | {r['best_w']:g}"
                    f" | {r['report_mean_best_w']:.3f} ± {r['report_se_best_w']:.3f}"
-                   f" | {single} | {r['report_mean_single']:.3f}"
+                   f" | {single} | {r['report_mean_single']:.3f} ± {r['report_se_single']:.3f}"
                    f" | {fmt(r['report_diff'], r['report_diff_se'])} | {r['verdict']} |")
     return "\n".join(out) + "\n"
 
