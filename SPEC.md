@@ -8,8 +8,9 @@
 
 ## 0. Instructions for the agent (read first)
 
-- This project is **simulation only. It needs no external data.** Do **not** read, import, copy, or commit anything from the trading system, press-release corpus, or any other existing data in this folder.
-- Create a **new, self-contained directory** `snv-cna-sim/` with its own git repo. It will be pushed to a **public** GitHub repo, so make sure no trading code, keys, or `.env` files end up in it.
+- This project is **simulation only. It needs no external data.** (Checked 2026-10-30: the author's machine holds no single-cell, genomic or phylogenetic data, so there is nothing to reuse anyway.) Work **only inside this repo**; do not read, import or copy any file from outside it. The machine also holds an unrelated trading-research project and secret-bearing files. The local, git-ignored `LOCAL_BUILD_NOTES.md` lists what to stay away from.
+- **The repo already exists.** This directory is the git repo, with remote `https://github.com/Jusman0/snv-cna-sim` (**public**). Do not create another repo. Commit and push after every stage in Section 7 and after every spec change, each as its own commit. Every push is public at once, so keys, `.env` files, trading code and `LOCAL_BUILD_NOTES.md` must never be committed (`.gitignore` covers them).
+- **Machine-specific setup** (which Python and venv, commit identity, hook quirks) is in `LOCAL_BUILD_NOTES.md`, which exists only on the author's PC. On any other machine, create a fresh Python 3.13 virtual environment and `pip install -r requirements.txt`.
 - Build in the order in Section 7. After each stage, run the listed tests before moving on.
 - Report the **actual numbers you get**. Never round toward a nicer story. If a result is weak or inconclusive, say so.
 - Keep it simple: NumPy + DendroPy + pandas + matplotlib. No deep learning and no external phylogenetics binaries.
@@ -63,6 +64,10 @@ normalized RF distance vs. true tree ──► results.csv ──► plots
 
 ```
 snv-cna-sim/
+├── SPEC.md                # this file
+├── .gitignore             # already present; ignores secrets and LOCAL_BUILD_NOTES.md
+├── .gitattributes         # already present; normalizes line endings
+├── LOCAL_BUILD_NOTES.md   # author's PC only, git-ignored, never committed
 ├── README.md              # what, why, how to run, results summary, limitations
 ├── config.yaml            # all parameters; nothing hard-coded
 ├── requirements.txt       # numpy, pandas, matplotlib, dendropy, pyyaml, pytest
