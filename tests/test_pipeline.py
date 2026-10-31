@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from analysis.stats import cell_summary, holdout_best_w, verdict
 from src.distances import cna_distance, combine, has_signal, normalize, snv_distance
 from src.evaluate import normalized_rf
 from src.reconstruct import nj_dendropy, nj_from_matrix, nj_newick
@@ -247,6 +248,35 @@ def test_small_grid_end_to_end(tmp_path):
         assert g["nrf"].nunique() == 1
     for (rep, s), g in df[df["w"] == 0.0].groupby(["replicate", "sigma"]):
         assert g["nrf"].nunique() == 1
+
+
+# ---------------------------------------------------------------- Stage 7 (analysis)
+def _synthetic_results(effect):
+    """Fake results.csv: combined = CNA-only + effect, exactly, in every replicate."""
+    r = rng(70)
+    rows = []
+    for alpha in (0.0, 0.5):
+        for sigma in (0.0, 1.0):
+            for rep in range(20):
+                base = r.uniform(0.2, 0.4)
+                for w, v in ((0.0, base), (0.5, base + effect), (1.0, base + 0.3)):
+                    rows.append(dict(alpha=alpha, sigma=sigma, w=w, replicate=rep, nrf=v))
+    return pd.DataFrame(rows)
+
+
+def test_analysis_verdicts_on_synthetic_results():
+    assert verdict(0.0, 0.0) == "no clear difference"
+    assert verdict(0.01, 0.0) == "combined worse"  # identical nonzero paired differences
+    assert verdict(-0.05, 0.01) == "combined better" and verdict(0.01, 0.01) == "no clear difference"
+    for effect, expected in ((0.05, "combined worse"), (-0.05, "combined better"),
+                             (0.0, "no clear difference")):
+        s = cell_summary(_synthetic_results(effect), 0.5)
+        assert (s["better_single"] == "CNA-only").all()
+        assert np.allclose(s["harm_vs_better_single"], effect)
+        assert (s["verdict_vs_better_single"] == expected).all()
+    h = holdout_best_w(_synthetic_results(-0.05), (0, 9), (10, 19))
+    assert (h["best_w"] == 0.5).all() and (h["n_report"] == 10).all()
+    assert np.allclose(h["report_diff"], -0.05)
 
 
 def test_harness_detects_dendropy_nondeterminism(tmp_path):
