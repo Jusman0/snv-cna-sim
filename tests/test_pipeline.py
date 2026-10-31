@@ -230,6 +230,25 @@ def test_rows_identical_across_processes(tmp_path):
     assert runs[0] == runs[1] == runs[2]
 
 
+# ---------------------------------------------------------------- Stage 6
+def test_small_grid_end_to_end(tmp_path):
+    out = tmp_path / "small.csv"
+    subprocess.run([sys.executable, str(SWEEP), "--small", "--out", str(out)], check=True,
+                   cwd=str(tmp_path))
+    df = pd.read_csv(out)
+    cfg = load_config()
+    assert list(df.columns) == ["alpha", "beta", "sigma", "w", "replicate", "seed",
+                                "n_cells", "n_snv_sites", "n_bins", "nrf"]
+    assert len(df) == 2 * 2 * 3 * len(cfg["weights"])
+    assert df["nrf"].between(0, 1).all()
+    assert sorted(df["seed"].unique()) == [cfg["base_seed"] + r for r in range(3)]
+    # Pairing: SNV-only ignores sigma and CNA-only ignores alpha, so those rows must agree.
+    for (rep, a), g in df[df["w"] == 1.0].groupby(["replicate", "alpha"]):
+        assert g["nrf"].nunique() == 1
+    for (rep, s), g in df[df["w"] == 0.0].groupby(["replicate", "sigma"]):
+        assert g["nrf"].nunique() == 1
+
+
 def test_harness_detects_dendropy_nondeterminism(tmp_path):
     # Positive control: the same harness must be able to see DendroPy's tie-order drift.
     dummies = [0, 13_337, 271_828, 99_991, 500_009, 7, 1_000_003, 31_415]
