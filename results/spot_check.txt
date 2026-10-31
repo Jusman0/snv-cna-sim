@@ -1,0 +1,7 @@
+Spot-check of 3 rows (picked with random_state=7)
+
+alpha=0.5 sigma=0.2 w=0.5 replicate=2 seed=2029: csv nrf=0.378378 recomputed=0.378378; csv sites=172 recomputed=172; shared splits 23/37 -> MATCH
+alpha=0.1 sigma=0.4 w=1 replicate=14 seed=2041: csv nrf=0.135135 recomputed=0.135135; csv sites=208 recomputed=208; shared splits 32/37 -> MATCH
+alpha=0 sigma=0.8 w=1 replicate=14 seed=2041: csv nrf=0.162162 recomputed=0.162162; csv sites=216 recomputed=216; shared splits 31/37 -> MATCH
+
+ALL MATCH
