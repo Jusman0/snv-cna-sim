@@ -70,13 +70,14 @@ snv-cna-sim/
 ├── LOCAL_BUILD_NOTES.md   # author's PC only, git-ignored, never committed
 ├── README.md              # what, why, how to run, results summary, limitations
 ├── config.yaml            # all parameters; nothing hard-coded
-├── requirements.txt       # numpy, pandas, matplotlib, dendropy, pyyaml, pytest
+├── requirements.txt       # pinned, verified on Python 3.13.5: numpy==2.5.4 pandas==3.1.0
+│                          #   matplotlib==3.11.2 dendropy==5.1.3 pyyaml==6.0.3 pytest==9.2.0
 ├── src/
 │   ├── simulate_tree.py   # random binary tree with branch lengths
 │   ├── simulate_snv.py    # infinite-sites mutations + noise
 │   ├── simulate_cna.py    # segmental gains/losses + noise
 │   ├── distances.py       # Hamming, L1, normalization, weighted combo
-│   ├── reconstruct.py     # matrix → DendroPy NJ tree
+│   ├── reconstruct.py     # matrix → deterministic NumPy NJ → DendroPy tree
 │   ├── evaluate.py        # normalized Robinson–Foulds
 │   └── run_sweep.py       # grid × replicates → results/results.csv
 ├── analysis/
@@ -93,31 +94,47 @@ snv-cna-sim/
 ### 4.1 `simulate_tree.py`
 - `simulate_tree(n_cells, rng) -> dendropy.Tree`
 - Random binary tree over `n_cells` leaves named `c0..c{n-1}`. Simplest valid method: start with a root and repeatedly split a uniformly chosen leaf (a Yule-like process). Then assign each edge a length drawn from `Exponential(mean=1.0)`.
-- Every tree in a replicate must share **one `dendropy.TaxonNamespace`**, or RF comparison will fail.
+- Every tree in a replicate must share **one `dendropy.TaxonNamespace`**, or RF comparison will fail. Create it first, in label order `c0..c{n-1}`; row and column `i` of every data and distance matrix is `taxon_namespace[i]`.
+- Attach the labels to the leaves in a random order. Splitting leaves otherwise gives every true cherry consecutive labels. A paired check on 100 trees found no detectable bias from this, but shuffling is free insurance.
+- Never `copy.deepcopy` a tree: the copy gets a new namespace and RF fails with `TaxonNamespaceIdentityError`. Use `tree.clone(depth=1)`, which shares the namespace.
 
 ### 4.2 `simulate_snv.py`
 - **Clean data (infinite-sites model):** for each edge, draw `k ~ Poisson(mu_snv × edge_length)` new mutations. Each mutation is a new site (column). A cell has a 1 at a site if the mutation lies on the path from the root to that cell.
 - **Noise:** `add_snv_noise(M, alpha, beta, rng)`
   - true 1 → observed 0 with probability `alpha` (allelic dropout / false negative)
   - true 0 → observed 1 with probability `beta` (false positive)
-- Drop all-zero columns after noise. Log the site count.
+- Keep the clean genotypes of internal nodes as well as leaves; the Stage 2 superset test needs each node's parent.
+- Drop all-zero columns after noise. Log the site count. If no sites remain (possible only when β = 0, e.g. the α = 1 test), the SNV source has no signal: apply the skip rule in 4.4.
 
 ### 4.3 `simulate_cna.py`
 - Genome of `n_bins` bins. Root copy number = 2 everywhere.
-- **Clean data:** for each edge, draw `k ~ Poisson(mu_cna × edge_length)` events. Each event picks a random contiguous segment (length uniform in `[seg_min, seg_max]` bins) and applies +1 or −1 with equal probability, clipped to `[0, cn_max]`. Children inherit the parent's profile, then apply their own events.
+- **Clean data:** for each edge, draw `k ~ Poisson(mu_cna × edge_length)` events. Each event picks a random contiguous segment (length uniform in `[seg_min, seg_max]` bins, start uniform in `[0, n_bins − length]`) and applies +1 or −1 with equal probability, clipped to `[0, cn_max]`. Clipping means a bin at 0 can come back to 1, which real biology does not allow; accept this simplification. Children inherit the parent's profile, then apply their own events.
 - **Noise:** `add_cna_noise(C, sigma, rng)` adds `Normal(0, sigma)` to every bin. **Keep the result as floats; do not round.** Rounding hides low noise and makes the curve stair-stepped.
 
 ### 4.4 `distances.py`
-- `snv_distance(M)`: pairwise Hamming distance divided by the number of sites.
+- `snv_distance(M)`: pairwise Hamming distance divided by the number of sites. (The division cancels in `normalize()`; it only keeps logged values readable.)
 - `cna_distance(C)`: pairwise L1 distance divided by the number of bins.
 - `normalize(D)`: divide by the mean of the off-diagonal entries, so both sources are on the same scale before mixing. **This step is essential.** Without it, `w` means nothing.
 - `combine(D_snv, D_cna, w) = w·D_snv + (1−w)·D_cna`
-- Edge case: if a normalized matrix is all zeros (no signal), log a warning and skip that configuration instead of crashing.
+- Edge case: check **before** normalizing. A source with zero sites, or an off-diagonal mean of 0, gives NaN after normalizing, not zeros, so an "all zeros" check never fires. This was verified: Hamming ÷ 0 sites is all-NaN, and DendroPy's NJ accepts NaN silently (nRF 0.973). Because 0·NaN = NaN, `combine(NaN, D_cna, w=0)` also poisons CNA-only. In that case log a warning, skip only the weights that need the empty source (every w > 0 for an empty SNV source, every w < 1 for an empty CNA source), and list the skipped rows in `run_log.txt`.
 
 ### 4.5 `reconstruct.py`
 `nj_from_matrix(D, taxon_namespace) -> dendropy.Tree`
 
-This DendroPy pattern has been **verified to work** (DendroPy 5.1.3):
+**Use a deterministic NJ.** DendroPy 5.1.3's `nj_tree()` runs with the pattern below unchanged, but it breaks ties by memory address. As a result, the same seed can give different trees in different processes. This was verified: 2 of 20 replicates changed between runs (for example nRF 0.1351 vs 0.1622). Rescaling a matrix by a factor that changes nothing in theory (error ≤ 4.4e-16) flipped a tree by RF = 8. Integer Hamming distances create many exact ties, and every results.csv row must be reproducible from its seed. So:
+
+- implement NJ in NumPy (about 40 lines), breaking ties by lowest index (`np.argmin` on the Q matrix);
+- write the result as Newick with the `c` labels;
+- parse it into the shared namespace:
+
+```python
+est_tree = dendropy.Tree.get(data=newick, schema="newick",
+                             taxon_namespace=taxon_namespace, rooting="force-unrooted")
+```
+
+Validate it in two ways: with the Stage 1 recovery test, and by checking it matches DendroPy's `nj_tree()` (RF = 0) on tie-free random float matrices. If time runs short, fall back to DendroPy's NJ and state the non-reproducibility in the README limitations.
+
+The DendroPy route below runs as written on DendroPy 5.1.3; use it for that cross-check. Row and column `i` must be `taxon_namespace[i]`. If the namespace order differs from the matrix order (for example, a namespace filled by reading a Newick file), a perfect matrix silently scores nRF 0.865.
 
 ```python
 import io, dendropy
@@ -137,25 +154,30 @@ tree.is_rooted = False
 
 ```python
 from dendropy.calculate import treecompare
-true_tree.is_rooted = False   # load true tree with rooting="force-unrooted"
-true_tree.encode_bipartitions(); est_tree.encode_bipartitions()
-rf = treecompare.symmetric_difference(true_tree, est_tree)
+t = true_tree.clone(depth=1)      # encode_bipartitions() edits the tree in place; never deepcopy
+t.is_rooted = False; est_tree.is_rooted = False
+t.encode_bipartitions(); est_tree.encode_bipartitions()
+rf = treecompare.symmetric_difference(t, est_tree)
 return rf / (2 * (n_cells - 3))   # 0 = identical, 1 = no shared splits
 ```
 
-**Gotcha (verified):** if the true tree has no branch lengths, its path distances are all 0 and NJ returns garbage. Branch lengths must exist.
+Verified behavior (DendroPy 5.1.3):
+- **Root collapse.** With `is_rooted = False`, `encode_bipartitions()` silently collapses the simulated tree's degree-2 root. That leaves n − 3 = 37 non-trivial splits for 40 cells, which is correct. The collapse modifies the tree in place, which is why the snippet scores a clone: code that walks the true tree afterwards would otherwise see different nodes.
+- **Rooting flag.** If the true tree is left `is_rooted = True`, a topologically perfect estimate scores nRF 0.149, with no error raised. An in-memory tree defaults to `is_rooted = None`, which is treated as unrooted, but set `False` explicitly anyway. The old comment about `rooting="force-unrooted"` applies only when reading a tree from a file.
+
+**Gotcha (verified):** if the true tree has no branch lengths, its path distances are all 0, and NJ returns the same wrong tree on every run (nRF 0.973). Branch lengths must exist.
 
 ### 4.7 `run_sweep.py`
 - Loop over: SNV dropout `alpha` × CNA jitter `sigma` × replicate seed.
 - **Within each replicate**, simulate the tree and the clean data once, apply noise, then evaluate **every** `w` on that same noisy data. This pairs the comparison, so every method sees an identical tree and identical noise.
-- Seeds: `seed = base_seed + replicate_index`, logged per row.
+- Seeds: `seed = base_seed + replicate_index`, logged per row. All 36 (α, σ) cells of a replicate therefore share the same seed. They share the same 20 trees and clean data, and only the noise level differs. That is intended (common random numbers); say so in the README.
 - Output `results/results.csv` with columns:
   `alpha, beta, sigma, w, replicate, seed, n_cells, n_snv_sites, n_bins, nrf`
 
 ### 4.8 `analysis/plots.py`
 1. **Win-map heatmap.** x = `sigma`, y = `alpha`, color = which of {SNV-only, CNA-only, combined w=0.5} has the lowest mean nRF. Annotate each cell with that mean.
 2. **Harm heatmap.** Color = `nRF(combined w=0.5) − min(nRF SNV-only, nRF CNA-only)`. Positive means combining made the tree *worse*. Use a diverging colormap centered at 0. This is the key figure.
-3. **Line plot.** At a fixed mid-level `sigma`, plot mean nRF vs. `alpha` for w ∈ {0, 0.5, 1}, with ±1 standard-error bands.
+3. **Line plot.** At `sigma` = 0.4, fixed before the sweep (a six-value grid has no single middle value), plot mean nRF vs. `alpha` for w ∈ {0, 0.5, 1}, with ±1 standard-error bands.
 
 ---
 
@@ -191,9 +213,9 @@ Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should 
 ## 6. Rigor rules (non-negotiable)
 
 1. **Paired comparisons.** All weights are evaluated on the same tree and the same noise draw (Section 4.7).
-2. **No tuning on reported data.** If we report a "best w," choose it on seeds 0–9 and report its nRF on seeds 10–19. Picking the best of 5 weights on the same data inflates results, which is the same leakage problem as in ML.
-3. **Report uncertainty.** Every mean is shown with its standard error, and differences smaller than about 2 SE are described as "no clear difference."
-4. **Freeze the config.** Copy the final `config.yaml` and the git commit hash into `results/run_log.txt`.
+2. **No tuning on reported data.** If we report a "best w," choose it on replicate indices 0–9 (seeds 2027–2036) and report its nRF on replicates 10–19 (seeds 2037–2046). Picking the best of 5 weights on the same data inflates results, which is the same leakage problem as in ML.
+3. **Report uncertainty.** Every mean is shown with its standard error, and differences smaller than about 2 SE are described as "no clear difference." Because the design is paired, the SE of a difference between methods (including the harm heatmap) is the SE of the per-replicate paired differences, not one computed from two separate SEs.
+4. **Freeze the config.** Copy the final `config.yaml`, the git commit hash and `pip freeze` output into `results/run_log.txt`.
 
 ---
 
@@ -201,11 +223,11 @@ Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should 
 
 | Stage | Build | Must pass before moving on |
 |---|---|---|
-| 1 | `simulate_tree`, `reconstruct`, `evaluate` | **NJ recovery test:** NJ on the true tree's own path-length distances returns nRF = 0 (exactly). |
-| 2 | `simulate_snv` (clean) | Each cell's mutation set is a superset of its parent's; sibling cells share exactly their common ancestor's mutations. |
+| 1 | `simulate_tree`, `reconstruct`, `evaluate` | **NJ recovery test:** NJ on the true tree's own path-length distances returns nRF = 0 exactly. A throwaway check passed on 50/50 seeds. The NumPy NJ matches DendroPy's `nj_tree()` (RF = 0) on tie-free random float matrices. |
+| 2 | `simulate_snv` (clean) | Each node's mutation set is a superset of its parent's (uses the internal-node genotypes from 4.2); sibling cells share exactly their common ancestor's mutations. |
 | 3 | `simulate_cna` (clean) | All values are in `[0, cn_max]`; with `mu_cna = 0`, every cell is all 2s. |
-| 4 | noise functions | With α=β=0 / σ=0 output equals input. With α=1, every 1 becomes 0. Empirical flip rates are within ±0.02 of the requested rates on a large matrix. |
-| 5 | `distances` + full single run | Zero noise gives low nRF (calibration step, Section 5). **Fully random** distances give nRF near 1. |
+| 4 | noise functions | With α=β=0 / σ=0 output equals input. With α=1, every 1 becomes 0; with β = 0 that leaves zero sites, so assert that the 4.4 skip rule fires instead of a NaN reaching NJ. Empirical flip rates are within ±0.02 of the requested rates on a large matrix. |
+| 5 | `distances` + full single run | Zero noise passes the calibration step (Section 5). **Fully random** symmetric distance matrices give mean nRF ≥ 0.95 over ≥ 20 draws (measured 0.992 ± 0.002 at n = 40). **Determinism:** the same replicate run twice, in separate processes, gives identical rows. |
 | 6 | `run_sweep` | Small grid (2×2, 3 replicates) runs end to end and the CSV has the expected row count. |
 | 7 | full sweep + `plots` | Figures render; spot-check 3 rows by hand. |
 
