@@ -1,0 +1,28 @@
+base_seed: 2027
+n_replicates: 20
+n_cells: 40
+mean_branch_length: 1.0  # Exponential edge lengths
+
+snv:
+  mu_snv: 3.0          # mutations per unit branch length
+  beta: 0.01           # false-positive rate (fixed)
+  alpha_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+
+cna:
+  n_bins: 5000         # spec default (was 500; 500 bins cannot pass calibration)
+  mu_cna: 8.0          # CNA events per unit branch length (was 1.0)
+  seg_min: 5
+  seg_max: 60
+  cn_max: 8
+  sigma_grid: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+weights: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+calibration:
+  max_mean_nrf: 0.2    # zero-noise bar for SNV-only and CNA-only (mean over replicates)
+
+analysis:
+  combined_w: 0.5      # the "combined" method in the heatmaps
+  line_plot_sigma: 0.4 # fixed before the sweep (spec 4.8)
+  select_replicates: [0, 9]   # choose a "best w" here (rule 6.2) ...
+  report_replicates: [10, 19] # ... and report it here
