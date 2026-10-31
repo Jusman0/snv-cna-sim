@@ -18,9 +18,11 @@
 
 ## 1. Research question
 
-The UConn tumor-phylogeny project (Bansal & Mandoiu) asks whether combining two error-prone single-cell data types, **SNVs** (point mutations) and **CNAs** (copy-number alterations), actually reconstructs tumor trees better than using the better single source alone.
+An NSF-funded UConn project (award IIS-2212511, *Algorithms for scalable inference and phylodynamic analysis of tumor haplotypes using low-coverage single cell sequencing data*; PI Ion Măndoiu, co-PI Mukul Bansal; 2022–2026) develops scalable methods to infer tumor phylogenies from low-coverage single-cell DNA data, reconstructing clone profiles that include both **copy-number alterations (CNAs)** and **single-nucleotide variants (SNVs)**. Its award abstract does not itself pose a "combined vs. better single source" comparison; that comparison is the question this study adds.
 
-**This study asks the same question at toy scale:**
+Closest prior work: model-based joint SNV+CNA methods that benchmark against SNV-only and CNA-only baselines, e.g. ScisTreeCNA (Zhang & Wu, UConn; bioRxiv preprint 2025, doi:10.1101/2025.11.21.689819), Pharming (Weber, Hart, Ochoa & El-Kebir; *J Comput Biol* 33(1), 2026, doi:10.1177/15578666251374694) and COMPASS (Sollier et al.; *Nat Commun* 2023, doi:10.1038/s41467-023-40378-8). Those are likelihood models. This study isolates the *naive* version (mixing two distance matrices), where adding a noisier source can plausibly hurt.
+
+**This study asks a related question at toy scale:**
 
 > Using a simple distance-based pipeline, under what SNV and CNA noise levels does combining SNV and CNA distances beat SNV-only and CNA-only reconstruction, and when does adding the noisier source make the tree *worse*?
 
@@ -220,10 +222,10 @@ All tests go in `tests/test_pipeline.py` and run with `pytest`.
 
 ## 9. Known limitations (put these in the README; do not try to fix them before the deadline)
 
-- **Naive combination.** A weighted sum of distances is not how real methods work. SCARLET, COMPASS, and similar methods model each error type explicitly in a likelihood. This study tests the *naive* approach only.
-- **No SNV–CNA interaction.** In real tumors, a copy-number loss can erase an SNV. Here the two processes are independent.
+- **Naive combination.** A weighted sum of distances is not how model-based methods work. COMPASS fits a joint likelihood over SNV and CNA read counts that includes dropout and doublets. SCARLET (Satas et al., *Cell Systems* 2020) models SNV read-count error and takes a copy-number tree as given, allowing an SNV to be lost only where that tree shows a deletion. This study tests the *naive* approach only.
+- **No SNV–CNA interaction.** In real tumors, a deletion of the copy carrying an SNV can erase it. Here the two processes are independent.
 - **Simplified noise.** No doublets, no missing data, no breakpoint-boundary errors in CNAs.
-- **Distance-based only.** NJ is one reconstruction method. The Bansal lab's DICE also uses distances (with balanced minimum evolution), which makes this a reasonable but limited baseline.
-- **Small scale.** 40 cells, versus thousands in real single-cell datasets.
+- **Distance-based only.** NJ is one reconstruction method. The Bansal lab's DICE (Weiner & Bansal, *Life Sci Alliance* 2025) is also distance-based but CNA-only: it builds trees from copy-number distances with FastME, typically balanced minimum evolution (NJ is an option). That makes this a reasonable but limited baseline.
+- **Small scale.** 40 cells, versus hundreds to thousands in current single-cell DNA datasets.
 
-**Stretch goals, only if everything above is done by Oct 31:** (a) SNV loss when the covering bin hits copy number 0; (b) replace the hand-rolled CNA simulator with the lab's CNAsim; (c) add a missing-data rate for SNVs.
+**Stretch goals, only if everything above is done by Oct 31:** (a) SNV loss when the covering bin hits copy number 0; (b) replace the hand-rolled CNA simulator with the lab's CNAsim (Weiner & Bansal, *Bioinformatics* 2023). CNAsim simulates copy number only (profiles, read counts or reads), not SNVs, so it would replace only the CNA half; its error model adds boundary errors and jitter; (c) add a missing-data rate for SNVs.
