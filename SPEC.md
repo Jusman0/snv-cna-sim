@@ -8,7 +8,7 @@
 
 ## 0. Instructions for the agent (read first)
 
-- This project is **simulation only. It needs no external data.** (Checked 2026-10-30: the author's machine holds no single-cell, genomic or phylogenetic data, so there is nothing to reuse anyway.) Work **only inside this repo**; do not read, import or copy any file from outside it. The machine also holds an unrelated trading-research project and secret-bearing files. The local, git-ignored `LOCAL_BUILD_NOTES.md` lists what to stay away from.
+- This project is **simulation only. It needs no external data.** (Checked 2026-10-30: the author's machine holds no single-cell, genomic or phylogenetic data, so there is nothing to reuse anyway.) Work **only inside this repo**; do not read, import or copy any file from outside it. Machine-specific restrictions are in the git-ignored `LOCAL_BUILD_NOTES.md`.
 - **The repo already exists.** This directory is the git repo, with remote `https://github.com/Jusman0/snv-cna-sim` (**public**). Do not create another repo. Commit and push after every stage in Section 7 and after every spec change, each as its own commit. Every push is public at once, so keys, `.env` files, trading code and `LOCAL_BUILD_NOTES.md` must never be committed (`.gitignore` covers them).
 - **Machine-specific setup** (which Python and venv, commit identity, hook quirks) is in `LOCAL_BUILD_NOTES.md`, which exists only on the author's PC. On any other machine, create a fresh Python 3.13 virtual environment and `pip install -r requirements.txt`.
 - Build in the order in Section 7. After each stage, run the listed tests before moving on.
@@ -21,7 +21,7 @@
 
 An NSF-funded UConn project (award IIS-2212511, *Algorithms for scalable inference and phylodynamic analysis of tumor haplotypes using low-coverage single cell sequencing data*; PI Ion Măndoiu, co-PI Mukul Bansal; 2022–2026) develops scalable methods to infer tumor phylogenies from low-coverage single-cell DNA data, reconstructing clone profiles that include both **copy-number alterations (CNAs)** and **single-nucleotide variants (SNVs)**. Its award abstract does not itself pose a "combined vs. better single source" comparison; that comparison is the question this study adds.
 
-Closest prior work: model-based joint SNV+CNA methods that benchmark against SNV-only and CNA-only baselines, e.g. ScisTreeCNA (Zhang & Wu, UConn; bioRxiv preprint 2025, doi:10.1101/2025.11.21.689819), Pharming (Weber, Hart, Ochoa & El-Kebir; *J Comput Biol* 33(1), 2026, doi:10.1177/15578666251374694) and COMPASS (Sollier et al.; *Nat Commun* 2023, doi:10.1038/s41467-023-40378-8). Those are likelihood models. This study isolates the *naive* version (mixing two distance matrices), where adding a noisier source can plausibly hurt.
+Closest prior work: model-based methods that infer SNV and CNA evolution jointly, e.g. ScisTreeCNA (Zhang & Wu, UConn; bioRxiv preprint 2025, doi:10.1101/2025.11.21.689819), Pharming (Weber, Hart, Ochoa & El-Kebir; *J Comput Biol* 33(1), 2026, doi:10.1177/15578666251374694) and COMPASS (Sollier et al.; *Nat Commun* 2023, doi:10.1038/s41467-023-40378-8). Those are likelihood models. This study isolates the *naive* version (mixing two distance matrices), where adding a noisier source can plausibly hurt.
 
 **This study asks a related question at toy scale:**
 
@@ -50,7 +50,7 @@ distances: D_snv, D_cna  (each normalized to mean off-diagonal = 1)
            D_w = w·D_snv + (1−w)·D_cna     for w ∈ {0, .25, .5, .75, 1}
     │
     ▼
-nj_tree(D_w) ──► reconstructed tree
+nj(D_w) (deterministic NumPy NJ, 4.5) ──► reconstructed tree
     │
     ▼
 normalized RF distance vs. true tree ──► results.csv ──► plots
@@ -95,7 +95,7 @@ snv-cna-sim/
 - `simulate_tree(n_cells, rng) -> dendropy.Tree`
 - Random binary tree over `n_cells` leaves named `c0..c{n-1}`. Simplest valid method: start with a root and repeatedly split a uniformly chosen leaf (a Yule-like process). Then assign each edge a length drawn from `Exponential(mean=1.0)`.
 - Every tree in a replicate must share **one `dendropy.TaxonNamespace`**, or RF comparison will fail. Create it first, in label order `c0..c{n-1}`; row and column `i` of every data and distance matrix is `taxon_namespace[i]`.
-- Attach the labels to the leaves in a random order. Splitting leaves otherwise gives every true cherry consecutive labels. A paired check on 100 trees found no detectable bias from this, but shuffling is free insurance.
+- **Required:** attach the labels to the leaves in a random order, drawn from the replicate's RNG. Splitting leaves otherwise gives every true cherry consecutive labels. With the lowest-index tie-breaking of 4.5, ties would then resolve toward the true cherries and bias nRF downward. (An earlier 100-tree check found no bias, but it used DendroPy's tie order, so it does not carry over.)
 - Never `copy.deepcopy` a tree: the copy gets a new namespace and RF fails with `TaxonNamespaceIdentityError`. Use `tree.clone(depth=1)`, which shares the namespace.
 
 ### 4.2 `simulate_snv.py`
@@ -116,14 +116,16 @@ snv-cna-sim/
 - `cna_distance(C)`: pairwise L1 distance divided by the number of bins.
 - `normalize(D)`: divide by the mean of the off-diagonal entries, so both sources are on the same scale before mixing. **This step is essential.** Without it, `w` means nothing.
 - `combine(D_snv, D_cna, w) = w·D_snv + (1−w)·D_cna`
-- Edge case: check **before** normalizing. A source with zero sites, or an off-diagonal mean of 0, gives NaN after normalizing, not zeros, so an "all zeros" check never fires. This was verified: Hamming ÷ 0 sites is all-NaN, and DendroPy's NJ accepts NaN silently (nRF 0.973). Because 0·NaN = NaN, `combine(NaN, D_cna, w=0)` also poisons CNA-only. In that case log a warning, skip only the weights that need the empty source (every w > 0 for an empty SNV source, every w < 1 for an empty CNA source), and list the skipped rows in `run_log.txt`.
+- Edge case: check **before** normalizing. A source with zero sites, or an off-diagonal mean of 0, gives NaN after normalizing, not zeros, so an "all zeros" check never fires. This was verified: Hamming ÷ 0 sites is all-NaN, and DendroPy's NJ accepts NaN silently (nRF 0.973). Because 0·NaN = NaN, `combine(NaN, D_cna, w=0)` also poisons CNA-only. In that case log a warning and skip only the weights that need the empty source (every w > 0 for an empty SNV source, every w < 1 for an empty CNA source). Compute the kept single-source weight from the non-empty matrix directly, never through `combine()`. Write skipped rows to results.csv with `nrf = NaN`, so the row count and the pairing stay visible, and list them in `run_log.txt`. With β = 0.01 this cannot happen in the sweep; it matters for the tests.
 
 ### 4.5 `reconstruct.py`
 `nj_from_matrix(D, taxon_namespace) -> dendropy.Tree`
 
-**Use a deterministic NJ.** DendroPy 5.1.3's `nj_tree()` runs with the pattern below unchanged, but it breaks ties by memory address. As a result, the same seed can give different trees in different processes. This was verified: 2 of 20 replicates changed between runs (for example nRF 0.1351 vs 0.1622). Rescaling a matrix by a factor that changes nothing in theory (error ≤ 4.4e-16) flipped a tree by RF = 8. Integer Hamming distances create many exact ties, and every results.csv row must be reproducible from its seed. So:
+**Use a deterministic NJ.** DendroPy 5.1.3's `nj_tree()` runs with the pattern below unchanged, but it breaks ties by memory address: it loops over a `set` of taxa whose hash is `id()` and keeps the first strict minimum. As a result, the same seed can give different trees in different processes. This was verified on identical inputs: 2 of 20 replicates changed between runs (for example nRF 0.1351 vs 0.1622), and 20-replicate means moved by up to 0.013. Ties are common. Integer Hamming distances create many exact ties, and near-ties within rounding error also flip trees: within one process, rescaling a matrix by a factor that changes nothing in theory (error ≤ 4.4e-16) changed a tree by RF = 8. Every results.csv row must be reproducible from its seed. So:
 
-- implement NJ in NumPy (about 40 lines), breaking ties by lowest index (`np.argmin` on the Q matrix);
+- implement NJ in NumPy (about 40 lines);
+- set the diagonal and the already-merged rows and columns of Q to +inf;
+- treat entries ≤ `Q.min() + 1e-9 · max|Q|` as tied, and join the lowest-index pair (i, j);
 - write the result as Newick with the `c` labels;
 - parse it into the shared namespace:
 
@@ -134,7 +136,7 @@ est_tree = dendropy.Tree.get(data=newick, schema="newick",
 
 Validate it in two ways: with the Stage 1 recovery test, and by checking it matches DendroPy's `nj_tree()` (RF = 0) on tie-free random float matrices. If time runs short, fall back to DendroPy's NJ and state the non-reproducibility in the README limitations.
 
-The DendroPy route below runs as written on DendroPy 5.1.3; use it for that cross-check. Row and column `i` must be `taxon_namespace[i]`. If the namespace order differs from the matrix order (for example, a namespace filled by reading a Newick file), a perfect matrix silently scores nRF 0.865.
+The DendroPy route below runs as written on DendroPy 5.1.3; use it for that cross-check. Row and column `i` must be `taxon_namespace[i]`. If the namespace order differs from the matrix order (for example, a namespace filled by reading a Newick file), a perfect matrix silently scores a wrong nRF (0.865 in one test).
 
 ```python
 import io, dendropy
@@ -163,9 +165,9 @@ return rf / (2 * (n_cells - 3))   # 0 = identical, 1 = no shared splits
 
 Verified behavior (DendroPy 5.1.3):
 - **Root collapse.** With `is_rooted = False`, `encode_bipartitions()` silently collapses the simulated tree's degree-2 root. That leaves n − 3 = 37 non-trivial splits for 40 cells, which is correct. The collapse modifies the tree in place, which is why the snippet scores a clone: code that walks the true tree afterwards would otherwise see different nodes.
-- **Rooting flag.** If the true tree is left `is_rooted = True`, a topologically perfect estimate scores nRF 0.149, with no error raised. An in-memory tree defaults to `is_rooted = None`, which is treated as unrooted, but set `False` explicitly anyway. The old comment about `rooting="force-unrooted"` applies only when reading a tree from a file.
+- **Rooting flag.** If the true tree is left `is_rooted = True`, a topologically perfect estimate scores a nonzero nRF (0.149 on one test tree), with no error raised. An in-memory tree defaults to `is_rooted = None`, which is treated as unrooted, but set `False` explicitly anyway. The old comment about `rooting="force-unrooted"` applies only when reading a tree from a file.
 
-**Gotcha (verified):** if the true tree has no branch lengths, its path distances are all 0, and NJ returns the same wrong tree on every run (nRF 0.973). Branch lengths must exist.
+**Gotcha (verified):** if the true tree has no branch lengths, its path distances are all 0, and NJ returns an arbitrary tree with no error (nRF 0.973 in one test). Branch lengths must exist.
 
 ### 4.7 `run_sweep.py`
 - Loop over: SNV dropout `alpha` × CNA jitter `sigma` × replicate seed.
@@ -204,7 +206,7 @@ cna:
 weights: [0.0, 0.25, 0.5, 0.75, 1.0]
 ```
 
-Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should take minutes on a laptop. A throwaway implementation measured 67 ms per replicate at 500 bins, about 48 s for the grid. If it takes longer, profile before optimizing anything.
+Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should take minutes on a laptop. A throwaway implementation measured 67 ms per replicate at 500 bins, about 48 s for the grid; 5000 bins will be somewhat slower. If it takes longer, profile before optimizing anything.
 
 **Calibration step:** before the full sweep, check at zero noise (α = β = σ = 0) that the **mean** nRF over the 20 replicates is ≤ 0.2 for both SNV-only and CNA-only. A throwaway implementation of Sections 4.1–4.6 measured the following (2026-10-30; mean ± SE over 20 replicates):
 
@@ -216,13 +218,21 @@ Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should 
 | `n_bins` 5000, `mu_cna` 8 (**new default**) | — | 0.155 ± 0.012 (pass) |
 | `mu_snv` 5 / 10 | 0.115 / 0.055 | — |
 
-The 5000-bin rows used different random draws from the others.
+Notes on the table:
+- **Where the 5000-bin rows come from.** A CNA-only diagnostic script: same 20 trees, different CNA events. On that script the original default scored 0.522 instead of 0.553.
+- **How all rows were computed.** DendroPy's NJ with labels in order.
+- **SNV-only is close to the bar.** Across processes it ranged 0.165–0.177, and 0.174–0.188 with shuffled labels. Expect the project's own NumPy NJ with shuffled labels to give somewhat different numbers.
 
-- **Why raising the rate alone fails.** With 500 bins, overlapping 5–60-bin segments saturate the genome, so L1 distance grows much more slowly than tree distance. The log-log slope against path length is 0.52 at `mu_cna` 8.
+- **Why raising the rate alone fails.** With 500 bins, gains and losses on the same bins partly cancel: each bin does a ±1 random walk. So L1 distance grows only like √(path length), and the log-log slope is 0.52 at `mu_cna` 8. With 1-bin segments at 500 bins, the slope is 0.95 and nRF is 0.105, which is consistent with the simulator working.
 - **What to do if a source fails.** Raise `n_bins` (or shorten segments) as well as the rate. Write every change in `run_log.txt`, and re-check with the project's own code, since these numbers come from a throwaway implementation.
 - **Do not change rates after looking at the noise-sweep results.**
 
-**Settle before the sweep:** with 10× more bins, per-bin jitter σ averages over many more bins, so the σ grid `[0, 1.0]` may barely move CNA-only. Decide the σ grid now, from this reasoning, not after seeing sweep results.
+**Keep the σ grid `[0, 0.2, …, 1.0]` as pre-registered.** What follows is an expectation, not a finding:
+- each CNA event changes the same number of bins whatever `n_bins` is, but jitter hits every bin;
+- so at 5000 bins, the noise in each pairwise L1 distance is about √10 larger relative to the signal per event;
+- the 8× rate adds signal back.
+
+The net effect on CNA-only is unknown until the sweep. Do not change the grid after seeing results.
 
 ---
 
@@ -243,7 +253,7 @@ The 5000-bin rows used different random draws from the others.
 | 2 | `simulate_snv` (clean) | Each node's mutation set is a superset of its parent's (uses the internal-node genotypes from 4.2); sibling cells share exactly their common ancestor's mutations. |
 | 3 | `simulate_cna` (clean) | All values are in `[0, cn_max]`; with `mu_cna = 0`, every cell is all 2s. |
 | 4 | noise functions | With α=β=0 / σ=0 output equals input. With α=1, every 1 becomes 0; with β = 0 that leaves zero sites, so assert that the 4.4 skip rule fires instead of a NaN reaching NJ. Empirical flip rates are within ±0.02 of the requested rates on a large matrix. |
-| 5 | `distances` + full single run | Zero noise passes the calibration step (Section 5). **Fully random** symmetric distance matrices give mean nRF ≥ 0.95 over ≥ 20 draws (measured 0.992 ± 0.002 at n = 40). **Determinism:** the same replicate run twice, in separate processes, gives identical rows. |
+| 5 | `distances` + full single run | Zero noise passes the calibration step (Section 5). **Fully random** symmetric distance matrices give mean nRF ≥ 0.95 over ≥ 20 draws (measured 0.992 ± 0.002 at n = 40). **Determinism:** run all 20 zero-noise replicates × 5 weights in 3 separate processes, each first allocating a random number of dummy objects to shift memory addresses, and require identical rows. Positive control: check that the harness can detect the DendroPy route's non-determinism; that may take more processes, since it showed up in 1 of 3 runs. If the DendroPy fallback is used, mark this test xfail and say so in the README. |
 | 6 | `run_sweep` | Small grid (2×2, 3 replicates) runs end to end and the CSV has the expected row count. |
 | 7 | full sweep + `plots` | Figures render; spot-check 3 rows by hand. |
 
@@ -253,7 +263,7 @@ All tests go in `tests/test_pipeline.py` and run with `pytest`.
 
 ## 8. Deliverables
 
-1. Public repo `snv-cna-sim/` with all code, tests, and `results/`.
+1. Public repo https://github.com/Jusman0/snv-cna-sim with all code, tests, and `results/`.
 2. Three figures (Section 4.8).
 3. A **`results/SUMMARY.md`**, under 250 words, written plainly:
    - Two or three headline findings with **exact numbers** and SEs. Example of the shape (not the content): *"With CNA jitter σ=0.4, combining (w=0.5) beat CNA-only until SNV dropout reached α≈__; above that, it was worse by __ ± __ nRF."*
@@ -265,7 +275,7 @@ All tests go in `tests/test_pipeline.py` and run with `pytest`.
 
 ## 9. Known limitations (put these in the README; do not try to fix them before the deadline)
 
-- **Naive combination.** A weighted sum of distances is not how model-based methods work. COMPASS fits a joint likelihood over SNV and CNA read counts that includes dropout and doublets. SCARLET (Satas et al., *Cell Systems* 2020) models SNV read-count error and takes a copy-number tree as given, allowing an SNV to be lost only where that tree shows a deletion. This study tests the *naive* approach only.
+- **Naive combination.** A weighted sum of distances is not how model-based methods work. COMPASS fits a joint likelihood over SNV and CNA read counts that includes dropout and doublets. SCARLET (Satas et al., *Cell Systems* 2020) models SNV read-count error and takes a copy-number tree as given, allowing SNV losses only on copy-number-tree edges where a copy-number loss supports them. This study tests the *naive* approach only.
 - **No SNV–CNA interaction.** In real tumors, a deletion of the copy carrying an SNV can erase it. Here the two processes are independent.
 - **Simplified noise.** No doublets, no missing data, no breakpoint-boundary errors in CNAs.
 - **Distance-based only.** NJ is one reconstruction method. The Bansal lab's DICE (Weiner & Bansal, *Life Sci Alliance* 2025) is also distance-based but CNA-only: it builds trees from copy-number distances with FastME, typically balanced minimum evolution (NJ is an option). That makes this a reasonable but limited baseline.
