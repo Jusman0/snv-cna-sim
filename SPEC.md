@@ -1,0 +1,229 @@
+# Project Spec: When Do Noisy SNVs Help Tumor Tree Reconstruction?
+
+**Owner:** Juice
+**Hard deadline:** results usable in an application essay by **Nov 1, 2026** (application due Nov 2)
+**Scope:** small, honest simulation study. Not a publication. Done beats perfect.
+
+---
+
+## 0. Instructions for the agent (read first)
+
+- This project is **simulation only. It needs no external data.** Do **not** read, import, copy, or commit anything from the trading system, press-release corpus, or any other existing data in this folder.
+- Create a **new, self-contained directory** `snv-cna-sim/` with its own git repo. It will be pushed to a **public** GitHub repo, so make sure no trading code, keys, or `.env` files end up in it.
+- Build in the order in Section 7. After each stage, run the listed tests before moving on.
+- Report the **actual numbers you get**. Never round toward a nicer story. If a result is weak or inconclusive, say so.
+- Keep it simple: NumPy + DendroPy + pandas + matplotlib. No deep learning and no external phylogenetics binaries.
+
+---
+
+## 1. Research question
+
+The UConn tumor-phylogeny project (Bansal & Mandoiu) asks whether combining two error-prone single-cell data types, **SNVs** (point mutations) and **CNAs** (copy-number alterations), actually reconstructs tumor trees better than using the better single source alone.
+
+**This study asks the same question at toy scale:**
+
+> Using a simple distance-based pipeline, under what SNV and CNA noise levels does combining SNV and CNA distances beat SNV-only and CNA-only reconstruction, and when does adding the noisier source make the tree *worse*?
+
+Ground truth is known because the tree is simulated. Real tumors never give you that, which is the whole point of simulation-based evaluation.
+
+---
+
+## 2. Pipeline overview
+
+```
+config.yaml
+    │
+    ▼
+simulate_tree ──► true tree (n cells, branch lengths)
+    │
+    ├──► simulate_snvs ──► clean SNV matrix (cells × sites, 0/1)
+    │         └──► add_snv_noise (dropout α, false-pos β) ──► noisy SNV matrix
+    │
+    └──► simulate_cnas ──► clean CN matrix (cells × bins, ints)
+              └──► add_cna_noise (jitter σ) ──► noisy CN matrix
+    │
+    ▼
+distances: D_snv, D_cna  (each normalized to mean off-diagonal = 1)
+           D_w = w·D_snv + (1−w)·D_cna     for w ∈ {0, .25, .5, .75, 1}
+    │
+    ▼
+nj_tree(D_w) ──► reconstructed tree
+    │
+    ▼
+normalized RF distance vs. true tree ──► results.csv ──► plots
+```
+
+`w = 0` is CNA-only, `w = 1` is SNV-only, and the values in between are combinations. One sweep over `w` therefore covers all three methods.
+
+---
+
+## 3. Directory layout
+
+```
+snv-cna-sim/
+├── README.md              # what, why, how to run, results summary, limitations
+├── config.yaml            # all parameters; nothing hard-coded
+├── requirements.txt       # numpy, pandas, matplotlib, dendropy, pyyaml, pytest
+├── src/
+│   ├── simulate_tree.py   # random binary tree with branch lengths
+│   ├── simulate_snv.py    # infinite-sites mutations + noise
+│   ├── simulate_cna.py    # segmental gains/losses + noise
+│   ├── distances.py       # Hamming, L1, normalization, weighted combo
+│   ├── reconstruct.py     # matrix → DendroPy NJ tree
+│   ├── evaluate.py        # normalized Robinson–Foulds
+│   └── run_sweep.py       # grid × replicates → results/results.csv
+├── analysis/
+│   └── plots.py           # figures from results.csv
+├── results/               # results.csv, figures/*.png, run_log.txt
+└── tests/
+    └── test_pipeline.py
+```
+
+---
+
+## 4. Module specifications
+
+### 4.1 `simulate_tree.py`
+- `simulate_tree(n_cells, rng) -> dendropy.Tree`
+- Random binary tree over `n_cells` leaves named `c0..c{n-1}`. Simplest valid method: start with a root and repeatedly split a uniformly chosen leaf (a Yule-like process). Then assign each edge a length drawn from `Exponential(mean=1.0)`.
+- Every tree in a replicate must share **one `dendropy.TaxonNamespace`**, or RF comparison will fail.
+
+### 4.2 `simulate_snv.py`
+- **Clean data (infinite-sites model):** for each edge, draw `k ~ Poisson(mu_snv × edge_length)` new mutations. Each mutation is a new site (column). A cell has a 1 at a site if the mutation lies on the path from the root to that cell.
+- **Noise:** `add_snv_noise(M, alpha, beta, rng)`
+  - true 1 → observed 0 with probability `alpha` (allelic dropout / false negative)
+  - true 0 → observed 1 with probability `beta` (false positive)
+- Drop all-zero columns after noise. Log the site count.
+
+### 4.3 `simulate_cna.py`
+- Genome of `n_bins` bins. Root copy number = 2 everywhere.
+- **Clean data:** for each edge, draw `k ~ Poisson(mu_cna × edge_length)` events. Each event picks a random contiguous segment (length uniform in `[seg_min, seg_max]` bins) and applies +1 or −1 with equal probability, clipped to `[0, cn_max]`. Children inherit the parent's profile, then apply their own events.
+- **Noise:** `add_cna_noise(C, sigma, rng)` adds `Normal(0, sigma)` to every bin. **Keep the result as floats; do not round.** Rounding hides low noise and makes the curve stair-stepped.
+
+### 4.4 `distances.py`
+- `snv_distance(M)`: pairwise Hamming distance divided by the number of sites.
+- `cna_distance(C)`: pairwise L1 distance divided by the number of bins.
+- `normalize(D)`: divide by the mean of the off-diagonal entries, so both sources are on the same scale before mixing. **This step is essential.** Without it, `w` means nothing.
+- `combine(D_snv, D_cna, w) = w·D_snv + (1−w)·D_cna`
+- Edge case: if a normalized matrix is all zeros (no signal), log a warning and skip that configuration instead of crashing.
+
+### 4.5 `reconstruct.py`
+`nj_from_matrix(D, taxon_namespace) -> dendropy.Tree`
+
+This DendroPy pattern has been **verified to work** (DendroPy 5.1.3):
+
+```python
+import io, dendropy
+labels = [t.label for t in taxon_namespace]
+csv = "x," + ",".join(labels) + "\n" + "\n".join(
+    labels[i] + "," + ",".join(str(D[i, j]) for j in range(len(labels)))
+    for i in range(len(labels)))
+pdm = dendropy.PhylogeneticDistanceMatrix.from_csv(
+    src=io.StringIO(csv), taxon_namespace=taxon_namespace,
+    is_first_row_column_names=True, is_first_column_row_names=True)
+tree = pdm.nj_tree()
+tree.is_rooted = False
+```
+
+### 4.6 `evaluate.py`
+`normalized_rf(true_tree, est_tree, n_cells) -> float`
+
+```python
+from dendropy.calculate import treecompare
+true_tree.is_rooted = False   # load true tree with rooting="force-unrooted"
+true_tree.encode_bipartitions(); est_tree.encode_bipartitions()
+rf = treecompare.symmetric_difference(true_tree, est_tree)
+return rf / (2 * (n_cells - 3))   # 0 = identical, 1 = no shared splits
+```
+
+**Gotcha (verified):** if the true tree has no branch lengths, its path distances are all 0 and NJ returns garbage. Branch lengths must exist.
+
+### 4.7 `run_sweep.py`
+- Loop over: SNV dropout `alpha` × CNA jitter `sigma` × replicate seed.
+- **Within each replicate**, simulate the tree and the clean data once, apply noise, then evaluate **every** `w` on that same noisy data. This pairs the comparison, so every method sees an identical tree and identical noise.
+- Seeds: `seed = base_seed + replicate_index`, logged per row.
+- Output `results/results.csv` with columns:
+  `alpha, beta, sigma, w, replicate, seed, n_cells, n_snv_sites, n_bins, nrf`
+
+### 4.8 `analysis/plots.py`
+1. **Win-map heatmap.** x = `sigma`, y = `alpha`, color = which of {SNV-only, CNA-only, combined w=0.5} has the lowest mean nRF. Annotate each cell with that mean.
+2. **Harm heatmap.** Color = `nRF(combined w=0.5) − min(nRF SNV-only, nRF CNA-only)`. Positive means combining made the tree *worse*. Use a diverging colormap centered at 0. This is the key figure.
+3. **Line plot.** At a fixed mid-level `sigma`, plot mean nRF vs. `alpha` for w ∈ {0, 0.5, 1}, with ±1 standard-error bands.
+
+---
+
+## 5. Default config (`config.yaml`)
+
+```yaml
+base_seed: 2027
+n_replicates: 20
+n_cells: 40
+
+snv:
+  mu_snv: 3.0          # mutations per unit branch length
+  beta: 0.01           # false-positive rate (fixed)
+  alpha_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+
+cna:
+  n_bins: 500
+  mu_cna: 1.0          # CNA events per unit branch length
+  seg_min: 5
+  seg_max: 60
+  cn_max: 8
+  sigma_grid: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+weights: [0.0, 0.25, 0.5, 0.75, 1.0]
+```
+
+Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should take minutes on a laptop. If it takes longer, profile before optimizing anything.
+
+**Calibration step:** before the full sweep, check that at zero noise both SNV-only and CNA-only reach nRF ≤ 0.2. If one of them can't, its mutation rate is too low to carry signal. Raise `mu_snv` or `mu_cna`, write down the change in `run_log.txt`, and re-check. Do not change rates after looking at the noise-sweep results.
+
+---
+
+## 6. Rigor rules (non-negotiable)
+
+1. **Paired comparisons.** All weights are evaluated on the same tree and the same noise draw (Section 4.7).
+2. **No tuning on reported data.** If we report a "best w," choose it on seeds 0–9 and report its nRF on seeds 10–19. Picking the best of 5 weights on the same data inflates results, which is the same leakage problem as in ML.
+3. **Report uncertainty.** Every mean is shown with its standard error, and differences smaller than about 2 SE are described as "no clear difference."
+4. **Freeze the config.** Copy the final `config.yaml` and the git commit hash into `results/run_log.txt`.
+
+---
+
+## 7. Build order and tests
+
+| Stage | Build | Must pass before moving on |
+|---|---|---|
+| 1 | `simulate_tree`, `reconstruct`, `evaluate` | **NJ recovery test:** NJ on the true tree's own path-length distances returns nRF = 0 (exactly). |
+| 2 | `simulate_snv` (clean) | Each cell's mutation set is a superset of its parent's; sibling cells share exactly their common ancestor's mutations. |
+| 3 | `simulate_cna` (clean) | All values are in `[0, cn_max]`; with `mu_cna = 0`, every cell is all 2s. |
+| 4 | noise functions | With α=β=0 / σ=0 output equals input. With α=1, every 1 becomes 0. Empirical flip rates are within ±0.02 of the requested rates on a large matrix. |
+| 5 | `distances` + full single run | Zero noise gives low nRF (calibration step, Section 5). **Fully random** distances give nRF near 1. |
+| 6 | `run_sweep` | Small grid (2×2, 3 replicates) runs end to end and the CSV has the expected row count. |
+| 7 | full sweep + `plots` | Figures render; spot-check 3 rows by hand. |
+
+All tests go in `tests/test_pipeline.py` and run with `pytest`.
+
+---
+
+## 8. Deliverables
+
+1. Public repo `snv-cna-sim/` with all code, tests, and `results/`.
+2. Three figures (Section 4.8).
+3. A **`results/SUMMARY.md`**, under 250 words, written plainly:
+   - Two or three headline findings with **exact numbers** and SEs. Example of the shape (not the content): *"With CNA jitter σ=0.4, combining (w=0.5) beat CNA-only until SNV dropout reached α≈__; above that, it was worse by __ ± __ nRF."*
+   - Where combining helped, where it hurt, and where there was no clear difference.
+   - The limitations (Section 9), stated briefly.
+4. **One sentence suitable for an application essay**, which must be fully supported by the numbers in SUMMARY.md. No extrapolating.
+
+---
+
+## 9. Known limitations (put these in the README; do not try to fix them before the deadline)
+
+- **Naive combination.** A weighted sum of distances is not how real methods work. SCARLET, COMPASS, and similar methods model each error type explicitly in a likelihood. This study tests the *naive* approach only.
+- **No SNV–CNA interaction.** In real tumors, a copy-number loss can erase an SNV. Here the two processes are independent.
+- **Simplified noise.** No doublets, no missing data, no breakpoint-boundary errors in CNAs.
+- **Distance-based only.** NJ is one reconstruction method. The Bansal lab's DICE also uses distances (with balanced minimum evolution), which makes this a reasonable but limited baseline.
+- **Small scale.** 40 cells, versus thousands in real single-cell datasets.
+
+**Stretch goals, only if everything above is done by Oct 31:** (a) SNV loss when the covering bin hits copy number 0; (b) replace the hand-rolled CNA simulator with the lab's CNAsim; (c) add a missing-data rate for SNVs.
