@@ -194,8 +194,8 @@ snv:
   alpha_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 
 cna:
-  n_bins: 500
-  mu_cna: 1.0          # CNA events per unit branch length
+  n_bins: 5000         # was 500: with 500 bins CNA-only cannot pass calibration (see below)
+  mu_cna: 8.0          # CNA events per unit branch length (was 1.0)
   seg_min: 5
   seg_max: 60
   cn_max: 8
@@ -204,9 +204,25 @@ cna:
 weights: [0.0, 0.25, 0.5, 0.75, 1.0]
 ```
 
-Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should take minutes on a laptop. If it takes longer, profile before optimizing anything.
+Run size: 6 × 6 × 20 = 720 replicates × 5 weights = 3,600 trees. This should take minutes on a laptop. A throwaway implementation measured 67 ms per replicate at 500 bins, about 48 s for the grid. If it takes longer, profile before optimizing anything.
 
-**Calibration step:** before the full sweep, check that at zero noise both SNV-only and CNA-only reach nRF ≤ 0.2. If one of them can't, its mutation rate is too low to carry signal. Raise `mu_snv` or `mu_cna`, write down the change in `run_log.txt`, and re-check. Do not change rates after looking at the noise-sweep results.
+**Calibration step:** before the full sweep, check at zero noise (α = β = σ = 0) that the **mean** nRF over the 20 replicates is ≤ 0.2 for both SNV-only and CNA-only. A throwaway implementation of Sections 4.1–4.6 measured the following (2026-10-30; mean ± SE over 20 replicates):
+
+| Setting | SNV-only nRF | CNA-only nRF |
+|---|---|---|
+| Original defaults (`mu_snv` 3, `n_bins` 500, `mu_cna` 1) | 0.169 ± 0.018 (pass) | 0.553 ± 0.024 (fail) |
+| `n_bins` 500, `mu_cna` 2 / 4 / 8 | — | 0.468 / 0.465 / 0.472 (fail: plateau) |
+| `n_bins` 5000, `mu_cna` 4 | — | 0.192 ± 0.018 (borderline) |
+| `n_bins` 5000, `mu_cna` 8 (**new default**) | — | 0.155 ± 0.012 (pass) |
+| `mu_snv` 5 / 10 | 0.115 / 0.055 | — |
+
+The 5000-bin rows used different random draws from the others.
+
+- **Why raising the rate alone fails.** With 500 bins, overlapping 5–60-bin segments saturate the genome, so L1 distance grows much more slowly than tree distance. The log-log slope against path length is 0.52 at `mu_cna` 8.
+- **What to do if a source fails.** Raise `n_bins` (or shorten segments) as well as the rate. Write every change in `run_log.txt`, and re-check with the project's own code, since these numbers come from a throwaway implementation.
+- **Do not change rates after looking at the noise-sweep results.**
+
+**Settle before the sweep:** with 10× more bins, per-bin jitter σ averages over many more bins, so the σ grid `[0, 1.0]` may barely move CNA-only. Decide the σ grid now, from this reasoning, not after seeing sweep results.
 
 ---
 
